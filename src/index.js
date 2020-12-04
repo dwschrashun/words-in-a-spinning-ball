@@ -1,23 +1,46 @@
 import * as THREE from 'three';
 
+// ccapture is running form a fork that works better with module imports and npm
+// you may still need to comment out the webm import within the CCapture.js file to get it
+// to work correctly
+import CCapture from 'ccapture.js'
+
 let camera, scene, renderer;
-let geometry, material, mesh;
-
+let geometry, material, mesh, mixer, capturer;
 let input, body, canvasHeight, canvasWidth;
-
 let initResolve;
 
+let animating, capturing;
 const HEIGHT_OFFSET = 100;
 const WIDTH_OFFSET = 15;
+const ROTATION_INCREMENT = 0.01;
+
+const animationTrackArray = [
+  [
+    0,
+    2.5,
+  ],
+  [
+    0,
+    Math.PI * -2,
+  ],
+];
+
+const clock = new THREE.Clock();
+const keyTrack = new THREE.NumberKeyframeTrack('.rotation[y]', animationTrackArray[0], animationTrackArray[1])
+const spinClip = new THREE.AnimationClip('singleSpin', -1, [keyTrack]);
+
 const initPromise = new Promise((resolve) => { initResolve = resolve });
 
+// const timer = new THREE.EventDispatcher();
+
 const init = () => {
-  camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 10 );
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 10);
   camera.position.z = 1;
 
   scene = new THREE.Scene();
 
-  geometry = new THREE.SphereGeometry(0.2, 20, 20);
+  geometry = new THREE.SphereGeometry(0.5, 50, 50);
   material = new THREE.MeshLambertMaterial({
     color: 0x888888
   });
@@ -39,6 +62,7 @@ const init = () => {
 
   console.log('loaded')
   initResolve();
+  animating = true;
   animate();
 
   const submit = document.getElementById('submit');
@@ -47,16 +71,22 @@ const init = () => {
 }
 
 const animate = () => {
-  requestAnimationFrame(animate);
-  mesh.rotation.y += 0.01;
-  renderer.render(scene, camera);
+  renderer.setAnimationLoop(() => {
+    if (capturing) {
+      mixer.update(clock.getDelta());
+      renderer.render(scene, camera);
+      capturer.capture(renderer.domElement);
+      return;
+    }
+    mesh.rotation.y -= 0.01;
+    renderer.render(scene, camera);
+  });
 }
 
 const writeToCanvas = (e) => {
   const text = input.value;
   console.log('text:', text);
   const canvas = createCanvas(text);
-  // const canvas = document.getElementById('text_renderer');
   const textImg = getTextImg(canvas, text);
   drawTexture(textImg);
   download();
@@ -71,7 +101,7 @@ const reset = () => {
 
 const createCanvas = text => {
   reset();
-  debugger
+
   const wrapper = document.createElement('div');
   wrapper.id = 'size-check';
   wrapper.setAttribute('style', 'font: 60px sans-serif; display: inline-block');
@@ -113,7 +143,36 @@ const drawTexture = image => {
 }
 
 const download = () => {
+  capturer = new CCapture({ format: 'gif', workersPath: 'dist/' });
+  animating = false;
 
+  // set up animation
+  mixer = new THREE.AnimationMixer(mesh);
+  const finishedPromise = new Promise(resolve => {
+    mixer.addEventListener('finished', e => {
+      capturing = false;
+      return resolve(e);
+    })
+  }).then(e => {
+    action.stop();
+    capturer.stop();
+    capturer.save((blob) => {
+      debugger
+    });
+    // animating = true;
+  });
+
+  const action = mixer.clipAction(spinClip);
+  action.setLoop(THREE.LoopOnce);
+  action.clampWhenFinished = true;
+
+  capturer.start();
+
+  //do animation
+  capturing = true;
+  action.play();
+
+  return finishedPromise;
 }
 
 window.onload = init;

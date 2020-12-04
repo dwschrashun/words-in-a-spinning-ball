@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "ccapture.js": "Unsigno/ccapture.js",
     "three": "^0.123.0"
   },
   "devDependencies": {
